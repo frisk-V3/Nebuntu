@@ -30,12 +30,14 @@ jobs:
           sudo lb config \
             --distribution noble \
             --archive-areas "main restricted universe multiverse" \
+            --mirror-bootstrap http://archive.ubuntu.com/ubuntu/ \
+            --mirror-binary http://archive.ubuntu.com/ubuntu/ \
             --debian-installer false \
             --bootappend-live "boot=live components locales=ja_JP.UTF-8 keyboard-layouts=jp" \
             --binary-images iso-hybrid \
             --memtest none
 
-          # Firefox リポジトリ
+          # Firefox リポジトリ（chroot と binary 両方）
           echo "deb [signed-by=/usr/share/keyrings/mozilla-archive-keyring.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.chroot > /dev/null
           echo "deb [signed-by=/usr/share/keyrings/mozilla-archive-keyring.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.binary > /dev/null
 
