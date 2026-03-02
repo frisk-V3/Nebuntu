@@ -19,12 +19,13 @@ jobs:
       - name: 必要ツールをインストール
         run: |
           apt-get update
-          apt-get install -y live-build xorriso debootstrap squashfs-tools sudo
+          apt-get install -y live-build xorriso debootstrap squashfs-tools sudo curl gpg
 
       - name: Nebuntu 構成作成
         run: |
-          mkdir -p live-build-dir
+          mkdir -p live-build-dir/config/package-lists
           cd live-build-dir
+
           sudo lb config \
             --distribution noble \
             --archive-areas "main restricted universe multiverse" \
@@ -32,17 +33,24 @@ jobs:
             --bootappend-live "boot=live components locales=ja_JP.UTF-8 keyboard-layouts=jp" \
             --binary-images iso-hybrid \
             --memtest none
-          mkdir -p config/package-lists
-          cat <<'EOF' > config/package-lists/desktop.list.chroot
-          network-manager
-          xserver-xorg-core
-          xserver-xorg-video-all
-          xserver-xorg-input-all
-          xfce4
-          xfce4-terminal
-          firefox
-          fonts-vlgothic
-          EOF
+
+          mkdir -p config/archives
+          echo "deb [signed-by=/usr/share/keyrings/mozilla-archive-keyring.gpg] https://packages.mozilla.org mozilla main" | sudo tee config/archives/mozilla.list.chroot
+          curl -fsSL https://packages.mozilla.org/repo-signing-key.gpg | sudo gpg --dearmor -o config/archives/mozilla.key.chroot
+
+      - name: パッケージリスト作成
+        run: |
+          cd live-build-dir
+cat <<'EOF' > config/package-lists/desktop.list.chroot
+network-manager
+xserver-xorg-core
+xserver-xorg-video-all
+xserver-xorg-input-all
+xfce4
+xfce4-terminal
+firefox
+fonts-vlgothic
+EOF
 
       - name: Nebuntu ISO をビルド
         run: |
