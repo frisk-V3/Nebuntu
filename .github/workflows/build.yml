@@ -33,7 +33,7 @@ jobs:
             --binary-images iso-hybrid \
             --memtest none
           
-          # Firefoxリポジトリ追加
+          # Firefoxリポジトリ追加（URLに /apt を絶対に入れる！）
           mkdir -p config/archives
           echo "deb [signed-by=/usr/share/keyrings/mozilla-archive-keyring.gpg] https://packages.mozilla.org mozilla main" | sudo tee config/archives/mozilla.list.chroot
           curl -fsSL https://packages.mozilla.org/repo-signing-key.gpg | sudo gpg --dearmor -o config/archives/mozilla.key.chroot
@@ -41,7 +41,6 @@ jobs:
       - name: パッケージリスト作成
         run: |
           cd live-build-dir
-          # エラーの元になる cat <<EOF をやめて echo で1行ずつ書く作戦
           echo "network-manager" > config/package-lists/desktop.list.chroot
           echo "xserver-xorg-core" >> config/package-lists/desktop.list.chroot
           echo "xserver-xorg-video-all" >> config/package-lists/desktop.list.chroot
