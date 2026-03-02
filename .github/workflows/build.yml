@@ -3,11 +3,14 @@ name: Build Nebuntu ISO
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # 手動でも実行できるようにする
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04
+      options: --privileged
 
     steps:
       - name: リポジトリを取得
@@ -15,15 +18,13 @@ jobs:
 
       - name: 必要ツールをインストール
         run: |
-          sudo apt-get update
-          sudo apt-get install -y live-build xorriso debootstrap squashfs-tools
+          apt-get update
+          apt-get install -y live-build xorriso debootstrap squashfs-tools sudo
 
       - name: Nebuntu 構成作成
         run: |
           mkdir -p live-build-dir
           cd live-build-dir
-          
-          # 基本設定（Ubuntu 24.04 Noble）
           sudo lb config \
             --distribution noble \
             --archive-areas "main restricted universe multiverse" \
@@ -31,10 +32,8 @@ jobs:
             --bootappend-live "boot=live components locales=ja_JP.UTF-8 keyboard-layouts=jp" \
             --binary-images iso-hybrid \
             --memtest none
-
-          # インストールするパッケージの指定（デスクトップ環境など）
           mkdir -p config/package-lists
-          cat <<EOF | sudo tee config/package-lists/desktop.list.chroot
+          cat <<'EOF' > config/package-lists/desktop.list.chroot
           network-manager
           xserver-xorg-core
           xserver-xorg-video-all
@@ -48,15 +47,10 @@ jobs:
       - name: Nebuntu ISO をビルド
         run: |
           cd live-build-dir
-          # GitHub Actions環境での権限エラー回避
           sudo lb build
-
-      - name: ISOファイル名のリネーム（Nebuntu.iso）
-        run: |
-          mv live-build-dir/live-image-amd64.hybrid.iso Nebuntu.iso
 
       - name: 成果物をアップロード
         uses: actions/upload-artifact@v4
         with:
           name: Nebuntu-ISO-Package
-          path: Nebuntu.iso
+          path: live-build-dir/*.iso
