@@ -1,20 +1,46 @@
+name: Build Nebuntu ISO
+
+on:
+  push:
+    branches: [ "main", "master" ] # mainでもmasterでも動くように
+  workflow_dispatch: # 手動実行ボタンも出す
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: 必要なツールをインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y live-build xorriso debootstrap squashfs-tools curl gpg
+
       - name: Nebuntu 構成作成
         run: |
           mkdir -p live-build-dir/config/package-lists
           mkdir -p live-build-dir/config/archives
+          mkdir -p live-build-dir/config/includes.chroot/etc/apt/preferences.d/
           cd live-build-dir
 
-          # Firefox用の鍵（合言葉）をダウンロードして配置
-          curl -fSsL https://packages.mozilla.org | sudo gpg --dearmor -o config/archives/mozilla.key.chroot
+          # 1. Firefoxリポジトリの鍵を取得
+          curl -fSsL https://packages.mozilla.org | gpg --dearmor | sudo tee config/archives/mozilla.key.chroot > /dev/null
           cp config/archives/mozilla.key.chroot config/archives/mozilla.key.binary
 
-          # リポジトリ登録（鍵を指定する形式に変更）
-          echo "deb [signed-by=/etc/apt/trusted.gpg.d/mozilla.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.chroot > /dev/null
-          # chroot内での鍵の配置場所を調整
-          mkdir -p config/includes.chroot/etc/apt/trusted.gpg.d/
-          cp config/archives/mozilla.key.chroot config/includes.chroot/etc/apt/trusted.gpg.d/mozilla.gpg
+          # 2. Firefoxリポジトリを追加
+          echo "deb [signed-by=/usr/share/keyrings/mozilla.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.chroot > /dev/null
 
-          sudo lb config \
+          # 3. 重要：Ubuntu標準の(空の)FirefoxよりMozilla版を優先させる設定
+          # これをしないと「パッケージがない」エラーになりやすいです
+          cat <<EOF > config/includes.chroot/etc/apt/preferences.d/mozilla
+Package: *
+Pin: origin packages.mozilla.org
+Pin-Priority: 1000
+EOF
+
+          # 4. live-buildの設定
+          lb config \
             --distribution noble \
             --archive-areas "main restricted universe multiverse" \
             --mirror-bootstrap http://archive.ubuntu.com \
@@ -23,4 +49,33 @@
             --debian-installer false \
             --bootappend-live "boot=live components locales=ja_JP.UTF-8 keyboard-layouts=jp" \
             --binary-images iso-hybrid \
- --memtest none
+            --memtest none
+
+      - name: パッケージリスト作成
+        run: |
+          cat <<EOF > live-build-dir/config/package-lists/desktop.list.chroot
+network-manager
+xserver-xorg-core
+xserver-xorg-video-all
+xserver-xorg-input-all
+xfce4
+xfce4-terminal
+firefox
+fonts-vlgothic
+sudo
+EOF
+
+      - name: Nebuntu ISO をビルド
+        run: |
+          cd live-build-dir
+          # 鍵を正しい場所に配置
+          sudo mkdir -p config/chroot_local-includes/usr/share/keyrings/
+          sudo cp config/archives/mozilla.key.chroot config/chroot_local-includes/usr/share/keyrings/mozilla.gpg
+          # ビルド実行
+          sudo lb build
+
+      - name: 成果物をアップロード
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nebuntu-ISO
+          path: live-build-dir/*.iso
