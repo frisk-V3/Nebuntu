@@ -19,12 +19,14 @@ jobs:
       - name: 必要ツールをインストール
         run: |
           apt-get update
-          apt-get install -y live-build xorriso debootstrap squashfs-tools sudo curl gpg
+          apt-get install -y live-build xorriso debootstrap squashfs-tools curl gpg sudo
 
       - name: Nebuntu 構成作成
         run: |
           mkdir -p live-build-dir/config/package-lists
+          mkdir -p live-build-dir/config/archives
           cd live-build-dir
+
           sudo lb config \
             --distribution noble \
             --archive-areas "main restricted universe multiverse" \
@@ -32,11 +34,18 @@ jobs:
             --bootappend-live "boot=live components locales=ja_JP.UTF-8 keyboard-layouts=jp" \
             --binary-images iso-hybrid \
             --memtest none
-          
-          # Firefoxリポジトリ追加（URLに /apt を絶対に入れる！）
-          mkdir -p config/archives
-          echo "deb [signed-by=/usr/share/keyrings/mozilla-archive-keyring.gpg] https://packages.mozilla.org mozilla main" | sudo tee config/archives/mozilla.list.chroot
-          curl -fsSL https://packages.mozilla.org/repo-signing-key.gpg | sudo gpg --dearmor -o config/archives/mozilla.key.chroot
+
+          # Firefox リポジトリ
+          echo "deb [signed-by=/usr/share/keyrings/mozilla-archive-keyring.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.chroot > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/mozilla-archive-keyring.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.binary > /dev/null
+
+          curl -fsSL https://packages.mozilla.org/repo-signing-key.gpg \
+            | gpg --dearmor \
+            | tee config/archives/mozilla.key.chroot > /dev/null
+
+          curl -fsSL https://packages.mozilla.org/repo-signing-key.gpg \
+            | gpg --dearmor \
+            | tee config/archives/mozilla.key.binary > /dev/null
 
       - name: パッケージリスト作成
         run: |
@@ -58,5 +67,5 @@ jobs:
       - name: 成果物をアップロード
         uses: actions/upload-artifact@v4
         with:
-          name: Nebuntu-ISO-Package
+          name: Nebuntu-ISO
           path: live-build-dir/*.iso
