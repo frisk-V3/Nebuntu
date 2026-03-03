@@ -25,22 +25,17 @@ jobs:
           mkdir -p lb/config/archives
           mkdir -p lb/config/includes.chroot/etc/apt/preferences.d/
           cd lb
-
-          # 1. Firefoxの鍵をセットアップ（これがないとエラーになる）
           curl -fSsL https://packages.mozilla.org | gpg --dearmor | sudo tee config/archives/mozilla.key.chroot > /dev/null
           cp config/archives/mozilla.key.chroot config/archives/mozilla.key.binary
-
-          # 2. Firefoxリポジトリを追加
           echo "deb [signed-by=/usr/share/keyrings/mozilla.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.chroot > /dev/null
 
-          # 3. Ubuntu標準の空パッケージを無視してMozilla公式版を優先
+          # 💡 ここが38行目付近：EOFの前にスペースを絶対に入れない
           cat <<EOF > config/includes.chroot/etc/apt/preferences.d/mozilla
 Package: *
 Pin: origin packages.mozilla.org
 Pin-Priority: 1000
 EOF
 
-          # 4. live-buildの設定 (ミラーURLを日本サーバーにして安定化)
           lb config \
             --distribution noble \
             --archive-areas "main restricted universe multiverse" \
@@ -52,7 +47,6 @@ EOF
 
       - name: Create Package List
         run: |
-          # 必要なソフトを詰め込む
           cat <<EOF > lb/config/package-lists/desktop.list.chroot
 network-manager
 xserver-xorg-core
@@ -68,10 +62,8 @@ EOF
       - name: Final Build
         run: |
           cd lb
-          # 鍵を内部に配置
           sudo mkdir -p config/chroot_local-includes/usr/share/keyrings/
           sudo cp config/archives/mozilla.key.chroot config/chroot_local-includes/usr/share/keyrings/mozilla.gpg
-          # いざ、ビルド！
           sudo lb build
 
       - name: Upload ISO
