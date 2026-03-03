@@ -14,12 +14,19 @@ jobs:
     steps:
       - name: リポジトリをチェックアウト
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Git操作のために履歴をすべて取得
 
-      - name: リポジトリ名を小文字に変換
+      - name: 環境準備（リポジトリ名小文字化と容量確保）
+        id: prep
         run: |
-          echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+          # 1. リポジトリ名を小文字にしてoutputにセット（エラー回避）
+          echo "repo_lower=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+          
+          # 2. GitHub Actionsのディスク容量を空ける（OSビルドには必須）
+          echo "Freeing up disk space..."
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
 
       - name: GitHubコンテナレジストリにログイン
         uses: docker/login-action@v3
@@ -28,24 +35,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Dockerイメージをビルドして保存
+      - name: DockerイメージをビルドしてPush
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: |
-            ghcr.io/${{ env.REPO_LOWER }}/nubuntu:latest
+          # 先ほど設定したoutputを確実に参照
+          tags: ghcr.io/${{ steps.prep.outputs.repo_lower }}/nubuntu:latest
 
-      - name: ISOファイルを作成してリポジトリに保存
+      - name: Nubuntu ISOビルド実行
         run: |
-          # 1. ISOファイル（中身は今はテキスト）を作成
-          echo "Nubuntu 1.0 ISO Base" > nubuntu.iso
+          # 必要なツールのインストール
+          sudo apt-get update
+          sudo apt-get install -y xorriso squashfs-tools wget mtools
+
+          # --- ここに実際のビルドロジックを記述 ---
+          # 例: 以前のスクリプトをここに流し込む
+          # wget http://releases.ubuntu.com... (中略) ...
           
-          # 2. Gitの設定
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          
-          # 3. ファイルを追加してPush
-          git add nubuntu.iso
-          git commit -m "chore: Nubuntu ISOファイルを更新" || echo "変更はありません"
-          git push origin main
+          # 今はテスト用にダミーファイルを作成
+          echo "This is Nubuntu 1.0 ISO Content" > nubuntu.iso
+
+      - name: GitHub Releaseを作成してISOを配布
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/heads/main')
+        with:
+          files: nubuntu.iso
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Nubuntu Release v1.0.${{ github.run_number }}"
+          body: "Nubuntuの最新ビルドです。Dockerイメージと併せて公開されました。"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
