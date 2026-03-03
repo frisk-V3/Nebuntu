@@ -1,60 +1,28 @@
-name: Build-Nebuntu-ISO
-
-on:
-  push:
-    branches: [ "main", "master" ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y live-build xorriso debootstrap squashfs-tools curl gpg
-
       - name: Configure and Build
         run: |
-          # 💡 重要：以前のゴミを完全に消去する
-          sudo rm -rf lb
-          mkdir -p lb/config/package-lists
-          mkdir -p lb/config/archives
-          mkdir -p lb/config/includes.chroot/etc/apt/preferences.d/
-          cd lb
+          # 以前のゴミを消去
+          sudo rm -rf lb && mkdir lb && cd lb
           
-          # Firefox設定
-          curl -fSsL https://packages.mozilla.org | gpg --dearmor | sudo tee config/archives/mozilla.key.chroot > /dev/null
-          echo "deb [signed-by=/usr/share/keyrings/mozilla.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.chroot > /dev/null
-          echo "Package: *" > config/includes.chroot/etc/apt/preferences.d/mozilla
-          echo "Pin: origin packages.mozilla.org" >> config/includes.chroot/etc/apt/preferences.d/mozilla
-          echo "Pin-Priority: 1000" >> config/includes.chroot/etc/apt/preferences.d/mozilla
-
-          # 💡 キャッシュを使わない設定（--cache false）を追加
+          # 1. 構成の初期化
+          # --mirror系は末尾に /ubuntu/ を追加
           lb config \
             --distribution jammy \
             --archive-areas "main universe" \
-            --mirror-bootstrap http://archive.ubuntu.com \
-            --mirror-binary http://archive.ubuntu.com \
+            --mirror-bootstrap "http://archive.ubuntu.com" \
+            --mirror-binary "http://archive.ubuntu.com" \
             --binary-images iso-hybrid \
             --architectures amd64 \
             --cache false
 
-          # パッケージリスト
+          # 2. Mozillaリポジトリと鍵の設定
+          # 接続先を https://packages.mozilla.org に修正
+          mkdir -p config/archives
+          echo "deb [signed-by=/usr/share/keyrings/mozilla.gpg] https://packages.mozilla.org mozilla main" > config/archives/mozilla.list.chroot
+          curl -fSsL https://packages.mozilla.org/repo-signing-key.gpg | gpg --dearmor | sudo tee config/archives/mozilla.key.chroot > /dev/null
+
+          # 3. パッケージリストの作成
+          mkdir -p config/package-lists
           echo "network-manager xserver-xorg-core xfce4 xfce4-terminal firefox fonts-vlgothic sudo" > config/package-lists/desktop.list.chroot
 
-          # 鍵の配置とビルド
-          sudo mkdir -p config/chroot_local-includes/usr/share/keyrings/
-          sudo cp config/archives/mozilla.key.chroot config/chroot_local-includes/usr/share/keyrings/mozilla.gpg
-          
-          # 💡 失敗してもキャッシュを残さないように強制ビルド
+          # 4. ビルド実行
           sudo lb build
-
-      - name: Upload ISO
-        uses: actions/upload-artifact@v4
-        with:
-          name: Nebuntu-ISO
-          path: lb/*.iso
