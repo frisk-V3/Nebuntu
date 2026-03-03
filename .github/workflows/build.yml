@@ -1,34 +1,18 @@
-name: Create Nubuntu ISO
+name: Build Nubuntu
 
 on:
-  workflow_dispatch: # ボタンを押した時にビルド開始
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: # これを入れておくとボタンで手動実行もできて便利！
 
 jobs:
-  build:
+  build-nubuntu:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Build Tools
+      - name: Build Docker image
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xorriso mtools isolinux
-
-      - name: Download Base Ubuntu
-        run: |
-          # 軽いUbuntu (Server版) をベースにする
-          wget http://releases.ubuntu.com -O base.iso
-
-      - name: Customize and Build Nubuntu
-        run: |
-          # ここで中身を書き換える指示を入れる（Firefoxの追加など）
-          # ※実際にはISOを解凍して中身を入れ替える複雑なコマンドが必要
-          echo "Nubuntu ISOを生成中..."
-          cp base.iso nubuntu.iso 
-
-      - name: Upload ISO
-        uses: actions/upload-artifact@v4
-        with:
-          name: nubuntu-iso
-          path: nubuntu.iso
+          docker build -t nubuntu:latest .
+          echo "Nubuntuのビルドが完了しました！"
