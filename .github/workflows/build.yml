@@ -17,7 +17,7 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y live-build xorriso debootstrap squashfs-tools curl gpg
+          sudo apt-get install -y live-build xorriso debootstrap squashfs-tools curl gpg ubuntu-keyring
 
       - name: Configure Nebuntu
         run: |
@@ -25,27 +25,29 @@ jobs:
           mkdir -p lb/config/archives
           mkdir -p lb/config/includes.chroot/etc/apt/preferences.d/
           cd lb
+          
+          # Firefoxの鍵とリポジトリ設定
           curl -fSsL https://packages.mozilla.org | gpg --dearmor | sudo tee config/archives/mozilla.key.chroot > /dev/null
           cp config/archives/mozilla.key.chroot config/archives/mozilla.key.binary
           echo "deb [signed-by=/usr/share/keyrings/mozilla.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.chroot > /dev/null
 
-          # 💡 書き方を変えました：1行ずつ echo してゴミを入れない
-          echo "Package: *" | tee config/includes.chroot/etc/apt/preferences.d/mozilla > /dev/null
-          echo "Pin: origin packages.mozilla.org" | tee -a config/includes.chroot/etc/apt/preferences.d/mozilla > /dev/null
-          echo "Pin-Priority: 1000" | tee -a config/includes.chroot/etc/apt/preferences.d/mozilla > /dev/null
+          # Firefox優先設定
+          echo "Package: *" > config/includes.chroot/etc/apt/preferences.d/mozilla
+          echo "Pin: origin packages.mozilla.org" >> config/includes.chroot/etc/apt/preferences.d/mozilla
+          echo "Pin-Priority: 1000" >> config/includes.chroot/etc/apt/preferences.d/mozilla
 
+          # live-build設定（メインサーバーを使用）
           lb config \
             --distribution noble \
-            --archive-areas "main restricted universe multiverse" \
-            --mirror-bootstrap http://jp.archive.ubuntu.com \
-            --mirror-binary http://jp.archive.ubuntu.com \
+            --archive-areas "main universe" \
+            --mirror-bootstrap http://archive.ubuntu.com \
+            --mirror-binary http://archive.ubuntu.com \
             --binary-images iso-hybrid \
             --architectures amd64 \
-            --memtest none
+            --bootstrap-keyring /usr/share/keyrings/ubuntu-archive-keyring.gpg
 
       - name: Create Package List
         run: |
-          # 💡 ここも確実に1行ずつ
           LIST="lb/config/package-lists/desktop.list.chroot"
           echo "network-manager" > $LIST
           echo "xserver-xorg-core" >> $LIST
