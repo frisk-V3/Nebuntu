@@ -29,8 +29,8 @@ jobs:
           cp config/archives/mozilla.key.chroot config/archives/mozilla.key.binary
           echo "deb [signed-by=/usr/share/keyrings/mozilla.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.chroot > /dev/null
 
-          # 💡 ここが38行目付近：EOFの前にスペースを絶対に入れない
-          cat <<EOF > config/includes.chroot/etc/apt/preferences.d/mozilla
+          # ここを修正：'EOF' とすることで、中身をYAMLとして解釈させないようにします
+          cat <<'EOF' > config/includes.chroot/etc/apt/preferences.d/mozilla
 Package: *
 Pin: origin packages.mozilla.org
 Pin-Priority: 1000
@@ -47,7 +47,7 @@ EOF
 
       - name: Create Package List
         run: |
-          cat <<EOF > lb/config/package-lists/desktop.list.chroot
+          cat <<'EOF' > lb/config/package-lists/desktop.list.chroot
 network-manager
 xserver-xorg-core
 xserver-xorg-video-all
