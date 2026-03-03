@@ -17,14 +17,12 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     dbus-x11 \
     libasound2t64 \
     && apt-get clean
-
-# 3. VS Codeのインストール（URLを修正しました！）
-RUN wget -qO- https://packages.microsoft.com | gpg --dearmor > packages.microsoft.gpg && \
+# 3.
+RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg && \
     install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/microsoft.gpg && \
-    echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com stable main" > /etc/apt/sources.list.d/vscode.list && \
+    echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list && \
     rm -f packages.microsoft.gpg && \
     apt-get update && apt-get install -y code
-
 # 4. 言語を日本語に設定
 ENV LANG=ja_JP.UTF-8
 
