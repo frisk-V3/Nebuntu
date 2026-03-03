@@ -1,28 +1,34 @@
-      - name: Configure and Build
+name: Create Nubuntu ISO
+
+on:
+  workflow_dispatch: # ボタンを押した時にビルド開始
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Build Tools
         run: |
-          # 以前のゴミを消去
-          sudo rm -rf lb && mkdir lb && cd lb
-          
-          # 1. 構成の初期化
-          # --mirror系は末尾に /ubuntu/ を追加
-          lb config \
-            --distribution jammy \
-            --archive-areas "main universe" \
-            --mirror-bootstrap "http://archive.ubuntu.com" \
-            --mirror-binary "http://archive.ubuntu.com" \
-            --binary-images iso-hybrid \
-            --architectures amd64 \
-            --cache false
+          sudo apt-get update
+          sudo apt-get install -y xorriso mtools isolinux
 
-          # 2. Mozillaリポジトリと鍵の設定
-          # 接続先を https://packages.mozilla.org に修正
-          mkdir -p config/archives
-          echo "deb [signed-by=/usr/share/keyrings/mozilla.gpg] https://packages.mozilla.org mozilla main" > config/archives/mozilla.list.chroot
-          curl -fSsL https://packages.mozilla.org/repo-signing-key.gpg | gpg --dearmor | sudo tee config/archives/mozilla.key.chroot > /dev/null
+      - name: Download Base Ubuntu
+        run: |
+          # 軽いUbuntu (Server版) をベースにする
+          wget http://releases.ubuntu.com -O base.iso
 
-          # 3. パッケージリストの作成
-          mkdir -p config/package-lists
-          echo "network-manager xserver-xorg-core xfce4 xfce4-terminal firefox fonts-vlgothic sudo" > config/package-lists/desktop.list.chroot
+      - name: Customize and Build Nubuntu
+        run: |
+          # ここで中身を書き換える指示を入れる（Firefoxの追加など）
+          # ※実際にはISOを解凍して中身を入れ替える複雑なコマンドが必要
+          echo "Nubuntu ISOを生成中..."
+          cp base.iso nubuntu.iso 
 
-          # 4. ビルド実行
-          sudo lb build
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: nubuntu-iso
+          path: nubuntu.iso
