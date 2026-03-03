@@ -1,9 +1,9 @@
-name: Build Nubuntu
+name: Build Nubuntu ISO
 
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # これを入れておくとボタンで手動実行もできて便利！
+  workflow_dispatch:
 
 jobs:
   build-nubuntu:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build Docker image
+      - name: Build Nubuntu Image
         run: |
           docker build -t nubuntu:latest .
           echo "Nubuntuのビルドが完了しました！"
