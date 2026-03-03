@@ -19,58 +19,63 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y live-build xorriso debootstrap squashfs-tools curl gpg
 
-      - name: Configure
+      - name: Configure Nebuntu
         run: |
-          mkdir -p live-build-dir/config/package-lists
-          mkdir -p live-build-dir/config/archives
-          mkdir -p live-build-dir/config/includes.chroot/etc/apt/preferences.d/
-          cd live-build-dir
+          mkdir -p lb/config/package-lists
+          mkdir -p lb/config/archives
+          mkdir -p lb/config/includes.chroot/etc/apt/preferences.d/
+          cd lb
 
+          # 1. Firefoxの鍵をセットアップ（これがないとエラーになる）
           curl -fSsL https://packages.mozilla.org | gpg --dearmor | sudo tee config/archives/mozilla.key.chroot > /dev/null
           cp config/archives/mozilla.key.chroot config/archives/mozilla.key.binary
 
+          # 2. Firefoxリポジトリを追加
           echo "deb [signed-by=/usr/share/keyrings/mozilla.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.chroot > /dev/null
 
+          # 3. Ubuntu標準の空パッケージを無視してMozilla公式版を優先
           cat <<EOF > config/includes.chroot/etc/apt/preferences.d/mozilla
-          Package: *
-          Pin: origin packages.mozilla.org
-          Pin-Priority: 1000
-          EOF
+Package: *
+Pin: origin packages.mozilla.org
+Pin-Priority: 1000
+EOF
 
+          # 4. live-buildの設定 (ミラーURLを日本サーバーにして安定化)
           lb config \
             --distribution noble \
             --archive-areas "main restricted universe multiverse" \
-            --mirror-bootstrap http://archive.ubuntu.com \
-            --mirror-binary http://archive.ubuntu.com \
-            --security false \
-            --debian-installer false \
-            --bootappend-live "boot=live components locales=ja_JP.UTF-8 keyboard-layouts=jp" \
+            --mirror-bootstrap http://jp.archive.ubuntu.com \
+            --mirror-binary http://jp.archive.ubuntu.com \
             --binary-images iso-hybrid \
+            --architectures amd64 \
             --memtest none
 
-      - name: Package List
+      - name: Create Package List
         run: |
-          cat <<EOF > live-build-dir/config/package-lists/desktop.list.chroot
-          network-manager
-          xserver-xorg-core
-          xserver-xorg-video-all
-          xserver-xorg-input-all
-          xfce4
-          xfce4-terminal
-          firefox
-          fonts-vlgothic
-          sudo
-          EOF
+          # 必要なソフトを詰め込む
+          cat <<EOF > lb/config/package-lists/desktop.list.chroot
+network-manager
+xserver-xorg-core
+xserver-xorg-video-all
+xserver-xorg-input-all
+xfce4
+xfce4-terminal
+firefox
+fonts-vlgothic
+sudo
+EOF
 
-      - name: Build
+      - name: Final Build
         run: |
-          cd live-build-dir
+          cd lb
+          # 鍵を内部に配置
           sudo mkdir -p config/chroot_local-includes/usr/share/keyrings/
           sudo cp config/archives/mozilla.key.chroot config/chroot_local-includes/usr/share/keyrings/mozilla.gpg
+          # いざ、ビルド！
           sudo lb build
 
-      - name: Upload
+      - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
           name: Nebuntu-ISO
-          path: live-build-dir/*.iso
+          path: lb/*.iso
