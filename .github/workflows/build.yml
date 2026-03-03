@@ -29,12 +29,10 @@ jobs:
           cp config/archives/mozilla.key.chroot config/archives/mozilla.key.binary
           echo "deb [signed-by=/usr/share/keyrings/mozilla.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.chroot > /dev/null
 
-          # ここを修正：'EOF' とすることで、中身をYAMLとして解釈させないようにします
-          cat <<'EOF' > config/includes.chroot/etc/apt/preferences.d/mozilla
-Package: *
-Pin: origin packages.mozilla.org
-Pin-Priority: 1000
-EOF
+          # 💡 書き方を変えました：1行ずつ echo してゴミを入れない
+          echo "Package: *" | tee config/includes.chroot/etc/apt/preferences.d/mozilla > /dev/null
+          echo "Pin: origin packages.mozilla.org" | tee -a config/includes.chroot/etc/apt/preferences.d/mozilla > /dev/null
+          echo "Pin-Priority: 1000" | tee -a config/includes.chroot/etc/apt/preferences.d/mozilla > /dev/null
 
           lb config \
             --distribution noble \
@@ -47,17 +45,17 @@ EOF
 
       - name: Create Package List
         run: |
-          cat <<'EOF' > lb/config/package-lists/desktop.list.chroot
-network-manager
-xserver-xorg-core
-xserver-xorg-video-all
-xserver-xorg-input-all
-xfce4
-xfce4-terminal
-firefox
-fonts-vlgothic
-sudo
-EOF
+          # 💡 ここも確実に1行ずつ
+          LIST="lb/config/package-lists/desktop.list.chroot"
+          echo "network-manager" > $LIST
+          echo "xserver-xorg-core" >> $LIST
+          echo "xserver-xorg-video-all" >> $LIST
+          echo "xserver-xorg-input-all" >> $LIST
+          echo "xfce4" >> $LIST
+          echo "xfce4-terminal" >> $LIST
+          echo "firefox" >> $LIST
+          echo "fonts-vlgothic" >> $LIST
+          echo "sudo" >> $LIST
 
       - name: Final Build
         run: |
