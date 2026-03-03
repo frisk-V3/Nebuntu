@@ -1,18 +1,31 @@
-name: Build Nubuntu ISO
+name: Build Nubuntu Image
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches: [ "main" ] # mainブランチに保存した時に実行
 
 jobs:
-  build-nubuntu:
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-      - name: Checkout code
+      - name: リポジトリをチェックアウト
         uses: actions/checkout@v4
 
-      - name: Build Nubuntu Image
-        run: |
-          docker build -t nubuntu:latest .
-          echo "Nubuntuのビルドが完了しました！"
+      - name: GitHubコンテナレジストリにログイン
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dockerイメージをビルドして保存
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/nubuntu:latest
