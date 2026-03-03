@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 環境も 22.04 に合わせます
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,48 +17,40 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y live-build xorriso debootstrap squashfs-tools curl gpg
 
-      - name: Configure Nebuntu
+      - name: Configure and Build
         run: |
+          # 💡 重要：以前のゴミを完全に消去する
+          sudo rm -rf lb
           mkdir -p lb/config/package-lists
           mkdir -p lb/config/archives
           mkdir -p lb/config/includes.chroot/etc/apt/preferences.d/
           cd lb
           
-          # Firefox (Mozilla公式) の設定
+          # Firefox設定
           curl -fSsL https://packages.mozilla.org | gpg --dearmor | sudo tee config/archives/mozilla.key.chroot > /dev/null
           echo "deb [signed-by=/usr/share/keyrings/mozilla.gpg] https://packages.mozilla.org mozilla main" | tee config/archives/mozilla.list.chroot > /dev/null
-
           echo "Package: *" > config/includes.chroot/etc/apt/preferences.d/mozilla
           echo "Pin: origin packages.mozilla.org" >> config/includes.chroot/etc/apt/preferences.d/mozilla
           echo "Pin-Priority: 1000" >> config/includes.chroot/etc/apt/preferences.d/mozilla
 
-          # 🚀 ここが重要：distribution を jammy (22.04) に変更
+          # 💡 キャッシュを使わない設定（--cache false）を追加
           lb config \
             --distribution jammy \
             --archive-areas "main universe" \
             --mirror-bootstrap http://archive.ubuntu.com \
             --mirror-binary http://archive.ubuntu.com \
             --binary-images iso-hybrid \
-            --architectures amd64
+            --architectures amd64 \
+            --cache false
 
-      - name: Create Package List
-        run: |
-          LIST="lb/config/package-lists/desktop.list.chroot"
-          echo "network-manager" > $LIST
-          echo "xserver-xorg-core" >> $LIST
-          echo "xserver-xorg-video-all" >> $LIST
-          echo "xserver-xorg-input-all" >> $LIST
-          echo "xfce4" >> $LIST
-          echo "xfce4-terminal" >> $LIST
-          echo "firefox" >> $LIST
-          echo "fonts-vlgothic" >> $LIST
-          echo "sudo" >> $LIST
+          # パッケージリスト
+          echo "network-manager xserver-xorg-core xfce4 xfce4-terminal firefox fonts-vlgothic sudo" > config/package-lists/desktop.list.chroot
 
-      - name: Final Build
-        run: |
-          cd lb
+          # 鍵の配置とビルド
           sudo mkdir -p config/chroot_local-includes/usr/share/keyrings/
           sudo cp config/archives/mozilla.key.chroot config/chroot_local-includes/usr/share/keyrings/mozilla.gpg
+          
+          # 💡 失敗してもキャッシュを残さないように強制ビルド
           sudo lb build
 
       - name: Upload ISO
