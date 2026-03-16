@@ -1,77 +1,86 @@
-name: Build Nebuntu ISO
+name: Nebuntu Auto-Release
 
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch: # 手動実行ボタンも追加
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: リポジトリをチェックアウト
         uses: actions/checkout@v4
 
-      - name: ディスク容量の最大化 (20GB以上確保)
+      - name: ディスク容量の最大化 (OSビルド用)
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 5120
           swap-size-mb: 1024
           remove-dotnet: 'true'
           remove-android: 'true'
-          remove-haskell: 'true'
+
+      - name: Dockerfileを動的に生成 (NotFound対策)
+        run: |
+          cat <<EOF > Dockerfile
+          FROM ubuntu:24.04
+          ENV DEBIAN_FRONTEND=noninteractive
+          RUN apt-get update && apt-get install -y \
+              wget gpg curl git vim firefox \
+              && wget -qO- https://packages.microsoft.com | gpg --dearmor > /usr/share/keyrings/microsoft.gpg \
+              && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com stable main" > /etc/apt/sources.list.d/vscode.list \
+              && apt-get update && apt-get install -y code \
+              && echo 'Nebuntu 1.0' > /etc/issue \
+              && rm -rf /var/lib/apt/lists/*
+          EOF
 
       - name: ビルドツールのインストール
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xorriso squashfs-tools wget mtools
+        run: sudo apt-get update && sudo apt-get install -y xorriso squashfs-tools wget mtools
 
-      - name: ベースISOの準備
+      - name: ベースISOの取得と解凍
         run: |
-          mkdir -p build/source
-          # Ubuntu 24.04 Desktop ISOのダウンロード
+          mkdir -p build/source build/rootfs
           wget https://releases.ubuntu.com -O base.iso
-          # ISOからファイルを抽出
           xorriso -osirrox on -indev base.iso -extract / build/source/
 
-      - name: カスタマイズ済みrootfsの構築 (Docker経由)
+      - name: カスタマイズ済みrootfsの構築
         run: |
-          # Dockerイメージをビルド
           docker build -t nebuntu-rootfs .
-          # コンテナから中身をファイルとして取り出す
-          mkdir -p build/rootfs
+          # コンテナの中身をrootfsに展開
           docker run --rm nebuntu-rootfs tar -c / | tar -x -C build/rootfs
 
-      - name: filesystem.squashfs の再構築
+      - name: filesystem.squashfs 再構築
         run: |
           sudo rm build/source/casper/filesystem.squashfs
-          # 再圧縮 (xzで極限まで小さくする)
           sudo mksquashfs build/rootfs build/source/casper/filesystem.squashfs -comp xz -noappend
 
-      - name: ブート可能なISOの作成
+      - name: ブート可能ISO生成
         run: |
-          # Ubuntu 24.04のブート構造を維持してビルド
-          # ※元ISOのブートローダー設定をそのまま利用
           sudo xorriso -as mkisofs \
-            -r -V "NEBUNTU_1_0" \
-            -o nebuntu.iso \
-            -J -joliet-long -l \
-            -b boot/grub/i386-pc/eltorito.img \
-            -c boot.catalog \
-            -no-emul-boot -boot-load-size 4 -boot-info-table \
-            -eltorito-alt-boot \
-            -e boot/grub/efi.img \
-            -no-emul-boot \
-            -isohybrid-gpt-basdat \
-            build/source/
+            -r -V "NEBUNTU" -o nebuntu.iso \
+            -J -joliet-long -l -b boot/grub/i386-pc/eltorito.img \
+            -c boot.catalog -no-emul-boot -boot-load-size 4 -boot-info-table \
+            -eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot \
+            -isohybrid-gpt-basdat build/source/
 
-      - name: リリース作成
+      - name: 既存の 'latest' タグを削除して上書き (自動リリース)
+        run: |
+          git tag -f latest
+          git push -f origin latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: リリースを上書き更新
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: "Nebuntu Release v1.0.${{ github.run_number }}"
+          tag_name: latest
+          name: "Nebuntu Latest Build"
+          body: "Pushされるたびに自動更新されるNebuntu ISOです。ビルド時刻: $(date)"
           files: nebuntu.iso
+          prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
