@@ -3,7 +3,7 @@ name: Nebuntu Auto-Release
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # 手動実行ボタンも追加
+  workflow_dispatch:
 
 jobs:
   build-and-release:
@@ -23,50 +23,79 @@ jobs:
           remove-dotnet: 'true'
           remove-android: 'true'
 
-      - name: Dockerfileを動的に生成 (NotFound対策)
+      - name: ビルドツールのインストール
+        run: sudo apt-get update && sudo apt-get install -y xorriso squashfs-tools wget mtools fdisk
+
+      - name: Dockerfileを動的に生成 (OSの心臓部を追加)
         run: |
           cat <<EOF > Dockerfile
           FROM ubuntu:24.04
           ENV DEBIAN_FRONTEND=noninteractive
+          # 1. OSとして起動するためのコアパッケージとデスクトップ環境を導入
           RUN apt-get update && apt-get install -y \
+              systemd systemd-sysv casper linux-image-generic initramfs-tools \
+              ubuntu-desktop-minimal \
               wget gpg curl git vim firefox \
-              && wget -qO- https://packages.microsoft.com | gpg --dearmor > /usr/share/keyrings/microsoft.gpg \
+              && rm -rf /var/lib/apt/lists/*
+          
+          # 2. VS Code リポジトリの追加とインストール
+          RUN wget -qO- https://packages.microsoft.com | gpg --dearmor > /usr/share/keyrings/microsoft.gpg \
               && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com stable main" > /etc/apt/sources.list.d/vscode.list \
               && apt-get update && apt-get install -y code \
-              && echo 'Nebuntu 1.0' > /etc/issue \
               && rm -rf /var/lib/apt/lists/*
+          
+          # 3. Nebuntuの独自設定
+          RUN echo 'Nebuntu 1.0 (Custom)' > /etc/issue \
+              && echo 'Welcome to Nebuntu - Next Ubuntu' > /etc/motd
           EOF
 
-      - name: ビルドツールのインストール
-        run: sudo apt-get update && sudo apt-get install -y xorriso squashfs-tools wget mtools
+      - name: ベースISOの取得 (正確なURLを指定)
+        run: |
+          # 24.04.1のデスクトップ版ISOを直接ダウンロード
+          wget https://releases.ubuntu.com/24.04/ubuntu-24.04.1-desktop-amd64.iso -O base.iso
 
-      - name: ベースISOの取得と解凍
+      - name: ベースISOの解凍と権限付与
         run: |
           mkdir -p build/source build/rootfs
-          wget https://releases.ubuntu.com -O base.iso
+          # xorrisoで中身を展開
           xorriso -osirrox on -indev base.iso -extract / build/source/
+          # 編集できるように書き込み権限を付与
+          chmod -R u+w build/source
 
-      - name: カスタマイズ済みrootfsの構築
+      - name: カスタマイズ済みrootfsの構築と抽出
         run: |
+          # Dockerイメージのビルド
           docker build -t nebuntu-rootfs .
-          # コンテナの中身をrootfsに展開
-          docker run --rm nebuntu-rootfs tar -c / | tar -x -C build/rootfs
+          
+          # コンテナを作成し、仮想ファイルシステムを除外して安全に抽出
+          CONTAINER_ID=\$(docker create nebuntu-rootfs)
+          docker export \$CONTAINER_ID | tar -x -C build/rootfs
+          docker rm \$CONTAINER_ID
+
+      - name: カーネルとinitrdの同期 (超重要)
+        run: |
+          # Docker内でインストールされた最新のカーネルをLive OSの起動領域にコピー
+          sudo cp build/rootfs/boot/vmlinuz-* build/source/casper/vmlinuz
+          sudo cp build/rootfs/boot/initrd.img-* build/source/casper/initrd
 
       - name: filesystem.squashfs 再構築
         run: |
-          sudo rm build/source/casper/filesystem.squashfs
-          sudo mksquashfs build/rootfs build/source/casper/filesystem.squashfs -comp xz -noappend
+          # 元のsquashfsを削除して、Nebuntuのシステムを圧縮
+          sudo rm -f build/source/casper/*.squashfs
+          sudo mksquashfs build/rootfs build/source/casper/filesystem.squashfs -comp xz -b 1M -noappend
 
-      - name: ブート可能ISO生成
+      - name: ブート可能ISOの再生成 (ハイブリッドブート対応)
         run: |
-          sudo xorriso -as mkisofs \
-            -r -V "NEBUNTU" -o nebuntu.iso \
-            -J -joliet-long -l -b boot/grub/i386-pc/eltorito.img \
-            -c boot.catalog -no-emul-boot -boot-load-size 4 -boot-info-table \
-            -eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot \
-            -isohybrid-gpt-basdat build/source/
+          # 元のISOからブートセクタ(MBR)を流用して、完璧な起動ディスクを作る
+          sudo xorriso -as mkisofs -r -V "NEBUNTU" -o nebuntu.iso \
+            -J -l -b boot/grub/i386-pc/eltorito.img -c boot.catalog \
+            -no-emul-boot -boot-load-size 4 -boot-info-table \
+            -eltorito-alt-boot -e EFI/boot/bootx64.efi -no-emul-boot \
+            -append_partition 2 0xef build/source/boot/grub/efi.img \
+            -isohybrid-mbr base.iso \
+            build/source/
 
-      - name: 既存の 'latest' タグを削除して上書き (自動リリース)
+      - name: 既存の 'latest' タグを削除して上書き
         run: |
           git tag -f latest
           git push -f origin latest
@@ -78,7 +107,7 @@ jobs:
         with:
           tag_name: latest
           name: "Nebuntu Latest Build"
-          body: "Pushされるたびに自動更新されるNebuntu ISOです。ビルド時刻: $(date)"
+          body: "Pushされるたびに自動更新されるNebuntu ISOです。ビルド時刻: \$(date)"
           files: nebuntu.iso
           prerelease: false
           make_latest: true
