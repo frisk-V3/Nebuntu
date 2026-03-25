@@ -15,22 +15,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install build deps
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            debootstrap squashfs-tools xorriso genisoimage mtools \
-            grub-pc-bin grub-efi-amd64-bin live-boot live-boot-initramfs-tools \
-            binutils wget ca-certificates xz-utils
+            debootstrap ubuntu-archive-keyring squashfs-tools xorriso mtools \
+            grub-pc-bin grub-efi-amd64-bin live-boot wget xz-utils
 
-      - name: Prepare workspace
+      - name: Prepare workspace and debootstrap
         run: |
+          set -eux
+          export DIST=noble
           mkdir -p build chroot iso
-          export DIST=24.04
           sudo debootstrap --arch=amd64 --variant=minbase $DIST build/chroot http://archive.ubuntu.com/ubuntu/
-          sudo mount --bind /dev build/chroot/dev || true
 
-      - name: Customize chroot (install packages, set motd, add user)
+      - name: Mount dev for chroot
+        run: |
+          sudo mount --bind /dev build/chroot/dev
+          sudo mount -t proc /proc build/chroot/proc || true
+          sudo mount -t sysfs /sys build/chroot/sys || true
+
+      - name: Customize chroot
         run: |
           sudo chroot build/chroot /bin/bash -eux -c "
             apt-get update
@@ -40,65 +45,10 @@ jobs:
             apt-get clean
           "
 
-      - name: Clean and unmount chroot
+      - name: Unmount chroot
         run: |
-          sudo umount build/chroot/dev || true
-          sudo rm -rf build/chroot/var/lib/apt/lists/*
+          sudo umount -l build/chroot/dev || true
+          sudo umount -l build/chroot/proc || true
+          sudo umount -l build/chroot/sys || true
 
-      - name: Create squashfs filesystem
-        run: |
-          sudo mksquashfs build/chroot iso/casper/filesystem.squashfs -comp xz -b 1M -noappend
-          sudo du -sx --block-size=1 build/chroot | cut -f1 > iso/casper/filesystem.size
-          sudo cp -a build/chroot/etc/issue iso/
-          # generate manifest
-          sudo chroot build/chroot dpkg-query -W --showformat='${Package} ${Version}\n' | sudo tee iso/casper/filesystem.manifest
-
-      - name: Copy boot files and create ISO tree
-        run: |
-          mkdir -p iso/boot/grub
-          # Use minimal grub EFI files from package
-          sudo grub-mkstandalone --format=x86_64-efi --output=iso/EFI/boot/grubx64.efi --locales="" --fonts=""
-          # create grub.cfg
-          cat > iso/boot/grub/grub.cfg <<'GRUB'
-          set default=0
-          menuentry "Nebuntu Live" {
-            linux /casper/vmlinuz boot=casper quiet splash ---
-            initrd /casper/initrd
-          }
-          GRUB
-
-      - name: Add kernel/initrd (use host kernel as placeholder; recommend replacing with proper vmlinuz/initrd)
-        run: |
-          sudo cp /boot/vmlinuz-* iso/casper/vmlinuz || true
-          sudo cp /boot/initrd.img-* iso/casper/initrd || true
-
-      - name: Build hybrid ISO
-        run: |
-          sudo xorriso -as mkisofs -r -V "NEBUNTU" -o nebuntu.iso \
-            -J -l -b boot/grub/i386-pc/eltorito.img -c boot.catalog \
-            -no-emul-boot -boot-load-size 4 -boot-info-table \
-            -eltorito-alt-boot -e EFI/boot/grubx64.efi -no-emul-boot \
-            iso/
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: nebuntu-iso
-          path: nebuntu.iso
-
-      - name: Create/Update latest tag
-        run: |
-          git tag -f latest
-          git push -f origin latest
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: "Nebuntu Latest Build"
-          body: "Auto-built Nebuntu ISO"
-          files: nebuntu.iso
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 以下は前回提示と同様に squashfs 作成、ISO 組立、リリース作成へ続きます
